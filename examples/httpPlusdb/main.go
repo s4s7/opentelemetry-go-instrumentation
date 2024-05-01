@@ -15,11 +15,13 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"net/http"
 	"os"
 
+	"github.com/go-redis/redis/v8"
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 )
@@ -42,7 +44,8 @@ const (
 
 // Server is Http server that exposes multiple endpoints.
 type Server struct {
-	db *sql.DB
+	db    *sql.DB
+	redis *redis.Client
 }
 
 // Create the db file.
@@ -73,8 +76,22 @@ func NewServer() *Server {
 		panic(err)
 	}
 
+	// Initialize Redis
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     "redis:6379", // Redis address
+		Password: "",           // no password set
+		DB:       0,            // use default DB
+	})
+
+	// Ping Redis to check connection
+	_, err = rdb.Ping(context.Background()).Result()
+	if err != nil {
+		panic(err)
+	}
+
 	return &Server{
-		db: database,
+		db:    database,
+		redis: rdb,
 	}
 }
 
@@ -97,6 +114,7 @@ func (s *Server) queryDb(w http.ResponseWriter, req *http.Request) {
 	}
 
 	logger.Info("queryDb called")
+
 	for rows.Next() {
 		var id int
 		var firstName string
@@ -111,11 +129,34 @@ func (s *Server) queryDb(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
+// Redis query handler
+func (s *Server) queryRedis(w http.ResponseWriter, req *http.Request) {
+
+	logger.Info("--- start queryRedis -----")
+
+	key := "key-s4s7"
+
+	ctx := req.Context()
+	err := s.redis.Set(ctx, key, "value-s4s7", 0).Err()
+	if err != nil {
+		panic(err)
+	}
+
+	val, err := s.redis.Get(ctx, key).Result()
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Fprintf(w, "Key set in Redis: key = %s\n", val)
+	logger.Info("queryRedis called and key set", zap.String("key", key), zap.String("value", val))
+}
+
 var logger *zap.Logger
 
 func setupHandler(s *Server) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/query_db", s.queryDb)
+	mux.HandleFunc("/query_redis", s.queryRedis)
 	return mux
 }
 

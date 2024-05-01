@@ -9,6 +9,7 @@ services:
   http-plus-db:
     depends_on:
       - jaeger
+      - redis
     build:
       context: .
       dockerfile: ./Dockerfile
@@ -17,6 +18,14 @@ services:
       - "8080:8080"
     volumes:
       - /proc:/host/proc
+
+  redis:
+    image: redis
+    ports:
+      - "6379:6379"
+
+
+  # これは絶対に必要なやつ
   go-auto:
     depends_on:
       - http-plus-db
@@ -29,7 +38,7 @@ services:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
       - OTEL_GO_AUTO_TARGET_EXE=/app/main
       - OTEL_GO_AUTO_INCLUDE_DB_STATEMENT=true
-      - OTEL_SERVICE_NAME=httpPlusdb
+      - OTEL_SERVICE_NAME=httpPlusRedis
       - OTEL_PROPAGATORS=tracecontext,baggage
       - CGO_ENABLED=1
     volumes:
